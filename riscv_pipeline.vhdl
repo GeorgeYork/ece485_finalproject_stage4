@@ -40,7 +40,7 @@ architecture Behavioral of riscv_pipeline is
     signal opcode       : STD_LOGIC_VECTOR(6 downto 0);
     signal alu_input_a, alu_input_b  : STD_LOGIC_VECTOR(31 downto 0);
     signal wb_data      : STD_LOGIC_VECTOR(31 downto 0);
-    signal stall, start_stall        : STD_LOGIC;
+    signal stall, start_stall, double_stall        : STD_LOGIC;
     signal stall_counter : integer range 0 to 3 := 0;
     signal clock_counter : integer := 1;
     signal mux_select_A  : STD_LOGIC_VECTOR(1 downto 0) := (others => '0');
@@ -199,7 +199,8 @@ architecture Behavioral of riscv_pipeline is
             if_id_rs1      : in STD_LOGIC_VECTOR(4 downto 0);
             if_id_rs2      : in STD_LOGIC_VECTOR(4 downto 0);
             stall_counter  : in integer range 0 to 3 := 0;
-            start_stall    : out STD_LOGIC
+            start_stall    : out STD_LOGIC;
+            double_stall   : out STD_LOGIC
         );
     end component;
 
@@ -348,7 +349,8 @@ begin
             if_id_rs1      => if_id_rs1,
             if_id_rs2      => if_id_rs2,
             stall_counter  => stall_counter,
-            start_stall    => start_stall
+            start_stall    => start_stall,
+            double_stall   => double_stall
         );
         
     -- Stall counter process
@@ -362,6 +364,7 @@ begin
              elsif start_stall = '1' then
                 --stall_counter <= 3;
                 stall_counter <= 2;  -- needed to support BNE [after previous stall]
+                --stall_counter <= 1;
             end if;
         end if;
     end process;
@@ -410,10 +413,35 @@ begin
                     alu_op => if_id_alu_op
                 );
                 
-    next_pc <=  std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall_counter = 1  and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, from forwarding
+
+                            
+    next_pc <=  --std_logic_vector(signed(ex_mem_npc) + signed(ex_mem_imm)) when (ex_mem_branch = '1' and ex_mem_reg1_data /= ex_mem_reg2_data) else -- branch case
+                pc when ((start_stall = '1' and stall_counter = 0) or (stall_counter = 2 and if_id_branch = '1' and double_stall = '1')) else   -- stall case, single and double
+                std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall_counter = 2 and double_stall = '0' and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, single stall
+                std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall_counter = 1 and double_stall = '1' and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, double stall
                 std_logic_vector(signed(id_ex_npc) + signed(id_ex_imm)) when (id_ex_jump = '1') else  -- jump case
-                pc when (start_stall = '1' or (stall_counter = 2 and if_id_branch = '1')) else   -- stall case
-                NPC;              
+                --pc when ((start_stall = '1' and if_id_branch = '0') or (start_stall = '1' and double_stall = '1' and if_id_branch = '1') or (stall = '1' and if_id_branch = '1')) else   -- stall case
+                NPC;    
+
+--    next_pc <=  --std_logic_vector(signed(ex_mem_npc) + signed(ex_mem_imm)) when (ex_mem_branch = '1' and ex_mem_reg1_data /= ex_mem_reg2_data) else -- branch case
+--                std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall = '0' and double_stall = '0' and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, double stall
+--                pc when ((start_stall = '1') or (stall = '1' and if_id_branch = '1' and double_stall = '1')) else   -- stall case, single and double
+--                std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall = '1' and double_stall = '0' and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, single stall
+--                std_logic_vector(signed(id_ex_npc) + signed(id_ex_imm)) when (id_ex_jump = '1') else  -- jump case
+--                --pc when ((start_stall = '1' and if_id_branch = '0') or (start_stall = '1' and double_stall = '1' and if_id_branch = '1') or (stall = '1' and if_id_branch = '1')) else   -- stall case
+--                NPC;              
+                
+--    next_pc <=  --std_logic_vector(signed(ex_mem_npc) + signed(ex_mem_imm)) when (ex_mem_branch = '1' and ex_mem_reg1_data /= ex_mem_reg2_data) else -- branch case
+--                std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall = '1' and double_stall = '0'  and id_ex_reg1_data /= id_ex_reg2_data) else -- branch case, from forwarding
+--                std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall = '0' and double_stall = '0' and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, from forwarding
+--                std_logic_vector(signed(id_ex_npc) + signed(id_ex_imm)) when (id_ex_jump = '1') else  -- jump case
+--                pc when ((start_stall = '1' and if_id_branch = '0') or (start_stall = '1' and double_stall = '1' and if_id_branch = '1') or (stall = '1' and if_id_branch = '1')) else   -- stall case
+--                NPC;              
+ 
+--    next_pc <=  std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall_counter = 1  and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, from forwarding
+--                std_logic_vector(signed(id_ex_npc) + signed(id_ex_imm)) when (id_ex_jump = '1') else  -- jump case
+--                pc when (start_stall = '1' or (stall_counter = 2 and if_id_branch = '1')) else   -- stall case
+--                NPC;  
                                            
     -- ID/EX pipeline registers
 
