@@ -239,11 +239,8 @@ begin
         );
                 
     NPC <= std_logic_vector(signed(pc) + 4);
-        
-
               
     -- update temporary registers to support pipelining (state machine no longer needed... as each instruction is at a different state)
-    -- Adding stall... if stall, then do not move the pipeline registers, and insert NOP instead
     pipe_reg: pipeline_registers
         port map (
             clk    => clk,
@@ -364,7 +361,7 @@ begin
                     stall_counter <= stall_counter - 1;
              elsif start_stall = '1' then
                 --stall_counter <= 3;
-                stall_counter <= 2;
+                stall_counter <= 2;  -- needed to support BNE [after previous stall]
             end if;
         end if;
     end process;
@@ -413,18 +410,11 @@ begin
                     alu_op => if_id_alu_op
                 );
                 
-    next_pc <=  --std_logic_vector(signed(id_ex_npc) + signed(id_ex_imm)) when (id_ex_branch = '1' and id_ex_reg1_data /= id_ex_reg2_data) else -- branch case, from registers
-                --std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall = '1'  and ex_mem_alu_result /= id_ex_reg2_data) else -- branch case, from forwarding
-                std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall_counter = 1  and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, from forwarding
+    next_pc <=  std_logic_vector(signed(if_id_npc) + signed(if_id_imm)) when (if_id_branch = '1' and stall_counter = 1  and mem_wb_alu_result /= id_ex_reg2_data) else -- branch case, from forwarding
                 std_logic_vector(signed(id_ex_npc) + signed(id_ex_imm)) when (id_ex_jump = '1') else  -- jump case
-                --NPC                                                     when (start_stall = '1' and if_id_branch = '1' and stall = '0'  and mem_wb_alu_result = id_ex_reg2_data) else -- branch case, from forwarding
                 pc when (start_stall = '1' or (stall_counter = 2 and if_id_branch = '1')) else   -- stall case
-                NPC; -- note: this happens during IF !!! 1st two during MEM
-                               
-                               
-    -- PC and IF/ID register updates
-
-                
+                NPC;              
+                                           
     -- ID/EX pipeline registers
 
 -----------------------------------------------------------
